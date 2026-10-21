@@ -246,9 +246,17 @@ tr.tot td{font-weight:600;border-bottom:0;padding-top:8px}
       <div id="paintRooms"></div>
       <div class="sw-title"><b>Sol des trois chambres</b><span id="toneName"></span></div>
       <label class="chk"><input type="checkbox" id="parquetToggle" checked>Parquet flottant (sinon chape nue)</label>
-      <div id="toneRow"><div class="chips" id="toneChips"></div></div>
+      <div id="toneRow">
+        <div class="chips" id="toneChips"></div>
+        <div class="row"><label for="floorColor">Autre teinte de sol</label><input type="color" id="floorColor" value="#d4b88c"></div>
+        <div class="sw-title"><b>Sens de pose</b><span id="dirName"></span></div>
+        <div class="grid" style="grid-template-columns:1fr 1fr">
+          <button class="btn" type="button" id="dirV" aria-pressed="true"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><path d="M3 1.5v13M6.5 1.5v13M10 1.5v13M13.5 1.5v13" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Vertical</button>
+          <button class="btn" type="button" id="dirH" aria-pressed="false"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" style="vertical-align:-2px;margin-right:6px"><path d="M1.5 3h13M1.5 6.5h13M1.5 10h13M1.5 13.5h13" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>Horizontal</button>
+        </div>
+      </div>
       <div class="grid" style="grid-template-columns:1fr"><button class="btn sm" id="paintReset" type="button">Choix initiaux</button></div>
-      <p class="note">Teintes d’écran indicatives, à faire reproduire sur nuancier ou échantillon (finition mate ou velours). Une teinte par pièce, toutes les faces des murs. Parquet contrecollé en chêne, lames larges d’environ 19 cm (exemple, à adapter au modèle choisi), pose flottante, lames dans le sens de la longueur des pièces, vers les fenêtres. Le sol du reste de la maison est inchangé.</p>
+      <p class="note">Teintes d’écran indicatives, à faire reproduire sur nuancier ou échantillon (finition mate ou velours). Une teinte par pièce, toutes les faces des murs. Parquet contrecollé, lames larges d’environ 19 cm (exemple, à adapter au modèle choisi), pose flottante. Les teintes de parquet portent des noms génériques, pas des références de fabricant, et valent pour les trois chambres à la fois. Sens de pose : « vertical » suit la longueur des pièces sur le plan 2D, « horizontal » la largeur ; il ne change que les trois chambres. Le sol du reste de la maison est inchangé.</p>
     </details>
     <details data-sec="areas">
       <summary>Surfaces (plan)</summary>
@@ -562,7 +570,7 @@ M.wall.emissive = new THREE.Color(PAL.render[0].c).multiplyScalar(0.3);   // lé
 const CR = new THREE.Color(PAL.render[0].c), CI = new THREE.Color('#eeece6'), CS = new THREE.Color('#d7cfc2');
 /* Peintures des chambres : une teinte par pièce (les autres faces intérieures restent en CI). La conversion tient compte de l'éclairage « legacy » très lumineux, comme pour le mobilier. */
 const paintCol = hex => { const c = new THREE.Color(hex); c.r = Math.pow(c.r, 1.7) * 0.92; c.g = Math.pow(c.g, 1.7) * 0.92; c.b = Math.pow(c.b, 1.7) * 0.92; return c; };
-const PAINT = { c1: '#cc8866', c2: '#bcc5a8', c3: '#b8c6cc', parquet: 1, tone: '#ffffff' };           // Ch.1 terracotta · Ch.2 vert sauge · Ch.3 bleu brume
+const PAINT = { c1: '#cc8866', c2: '#bcc5a8', c3: '#b8c6cc', parquet: 1, floor: '#d4b88c', dir: 'v' };   // Ch.1 terracotta · Ch.2 vert sauge · Ch.3 bleu brume · sol : teinte visée du parquet, sens de pose v (dans la longueur) ou h (dans la largeur)
 const PAINTC = { c1: paintCol(PAINT.c1), c2: paintCol(PAINT.c2), c3: paintCol(PAINT.c3) };
 const PAINT_ROOMS = [['c2', [0.36, 0.36, 3.06, 4.29]], ['c3', [3.13, 0.36, 5.83, 4.29]], ['c1', [0.36, 5.33, 3.06, 9.01]]];   // intérieur des chambres (u0, v0, u1, v1)
 const PAINT_SPLIT = { u: [3.095], v: [4.325, 5.295] };                                                     // limites de pièces où l'on coupe les murs en morceaux
@@ -1797,7 +1805,12 @@ function frame(ts) {
 requestAnimationFrame(frame);
 /* ===== 11b. Peintures des chambres et sol : choix par pièce, mémorisés sur cet appareil ===== */
 const PALETTE = [['Blanc chaud', '#ece8df'], ['Lin', '#dccfb8'], ['Vert sauge', '#bcc5a8'], ['Bleu brume', '#b8c6cc'], ['Terracotta', '#cc8866'], ['Olive doux', '#a5a97f']];
-const TONES = [['Chêne clair', '#ffffff', '#d9c19a'], ['Chêne miel', '#e6c28c', '#c9a26a'], ['Chêne grisé', '#d2cabd', '#b9ad9a']];   // nom, teinte multipliée à la texture, pastille
+/* Teintes de parquet : couleur moyenne visée (hex d'écran, comme les peintures). La texture de base est un chêne clair (FLOOR_REF) :
+   on la multiplie par le rapport entre la teinte visée et cette référence, avec la même conversion « legacy » que les murs. Noms génériques, pas des références de fabricant. */
+const TONES = [['Chêne blanchi', '#e3d8c3'], ['Chêne clair', '#d4b88c'], ['Chêne miel', '#c9a26a'], ['Chêne doré', '#b5864a'], ['Chêne grisé', '#b9ad9a'], ['Gris fumé', '#7d776e'], ['Chêne fumé', '#8c6f4e'], ['Noyer', '#6b4a33'], ['Noyer foncé', '#4a3628']];
+const FLOOR_REF = '#d4b88c';
+const floorMul = hex => { const a = paintCol(hex), b = paintCol(FLOOR_REF); return [a.r / b.r, a.g / b.g, a.b / b.b].map(x => Math.min(3.2, x)); };
+const DIRS = { v: 'dans la longueur des pièces', h: 'dans la largeur des pièces' };
 const PROOMS = [['c2', 'Chambre 2 · lit 160'], ['c3', 'Chambre 3 · lit 140'], ['c1', 'Chambre 1 · canapé convertible et bureau']];
 const PKEY = 'maison3d.paint.v1', PDEF = Object.assign({}, PAINT);
 const paintName = hex => { const q = PALETTE.find(x => x[1].toLowerCase() === String(hex).toLowerCase()); return q ? q[0] : 'Teinte personnalisée'; };
@@ -1806,9 +1819,11 @@ let paintRb = 0;
 function refreshPaint(save) {
   cancelAnimationFrame(paintRb);
   paintRb = requestAnimationFrame(() => { for (const k of ['c1', 'c2', 'c3']) PAINTC[k].copy(paintCol(PAINT[k])); rebuildWalls(cutH); });
-  M.parquet.color.set(PAINT.tone); setBedFloor(!!PAINT.parquet);
+  const m = floorMul(PAINT.floor); M.parquet.color.setRGB(m[0], m[1], m[2]);
+  TEX.parquet.rotation = PAINT.dir === 'h' ? Math.PI / 2 : 0;   // la texture est posée le long de v : un quart de tour la couche le long de u (même échelle des lames)
+  setBedFloor(!!PAINT.parquet);
   syncPaintUI();
-  if (save) { try { localStorage.setItem(PKEY, JSON.stringify({ v: 1, c1: PAINT.c1, c2: PAINT.c2, c3: PAINT.c3, parquet: PAINT.parquet, tone: PAINT.tone })); } catch (e) { /* stockage indisponible */ } }
+  if (save) { try { localStorage.setItem(PKEY, JSON.stringify({ v: 1, c1: PAINT.c1, c2: PAINT.c2, c3: PAINT.c3, parquet: PAINT.parquet, floor: PAINT.floor, dir: PAINT.dir })); } catch (e) { /* stockage indisponible */ } }
 }
 function syncPaintUI() {
   for (const [k] of PROOMS) {
@@ -1816,8 +1831,9 @@ function syncPaintUI() {
     document.querySelectorAll('#pc-' + k + ' .chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.hex.toLowerCase() === PAINT[k].toLowerCase())));
   }
   $('#parquetToggle').checked = !!PAINT.parquet; $('#toneRow').hidden = !PAINT.parquet;
-  document.querySelectorAll('#toneChips .chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.hex.toLowerCase() === PAINT.tone.toLowerCase())));
-  const t = TONES.find(x => x[1].toLowerCase() === PAINT.tone.toLowerCase()); $('#toneName').textContent = t ? t[0] : '';
+  document.querySelectorAll('#toneChips .chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.hex.toLowerCase() === PAINT.floor.toLowerCase())));
+  const t = TONES.find(x => x[1].toLowerCase() === PAINT.floor.toLowerCase()); $('#toneName').textContent = PAINT.parquet ? (t ? t[0] : 'Teinte personnalisée') : 'Chape nue'; $('#floorColor').value = PAINT.floor;
+  $('#dirV').setAttribute('aria-pressed', String(PAINT.dir !== 'h')); $('#dirH').setAttribute('aria-pressed', String(PAINT.dir === 'h')); $('#dirName').textContent = DIRS[PAINT.dir === 'h' ? 'h' : 'v'];
 }
 (function initPaintUI() {
   const host = $('#paintRooms');
@@ -1833,16 +1849,20 @@ function syncPaintUI() {
     d.querySelector('input[type=color]').addEventListener('input', e => { PAINT[k] = e.target.value; refreshPaint(true); });
   }
   const tc = $('#toneChips');
-  for (const [name, mult, dot] of TONES) {
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.hex = mult; b.style.setProperty('--sw', dot); b.title = name; b.setAttribute('aria-label', name);
-    b.addEventListener('click', () => { PAINT.tone = mult; refreshPaint(true); }); tc.appendChild(b);
+  for (const [name, hex] of TONES) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.hex = hex; b.style.setProperty('--sw', hex); b.title = name; b.setAttribute('aria-label', name);
+    b.addEventListener('click', () => { PAINT.floor = hex; refreshPaint(true); }); tc.appendChild(b);
   }
+  $('#floorColor').addEventListener('input', e => { PAINT.floor = e.target.value; refreshPaint(true); });
+  $('#dirV').addEventListener('click', () => { PAINT.dir = 'v'; refreshPaint(true); });
+  $('#dirH').addEventListener('click', () => { PAINT.dir = 'h'; refreshPaint(true); });
   $('#parquetToggle').addEventListener('change', e => { PAINT.parquet = e.target.checked ? 1 : 0; refreshPaint(true); });
   $('#paintReset').addEventListener('click', () => { Object.assign(PAINT, PDEF); try { localStorage.removeItem(PKEY); } catch (e) { /* ignore */ } refreshPaint(false); });
   let saved = null; try { saved = JSON.parse(localStorage.getItem(PKEY) || 'null'); } catch (e) { saved = null; }
   if (saved && saved.v === 1) {
     for (const k of ['c1', 'c2', 'c3']) if (hex6(saved[k])) PAINT[k] = saved[k];
-    if (hex6(saved.tone)) PAINT.tone = saved.tone; if (saved.parquet === 0 || saved.parquet === 1) PAINT.parquet = saved.parquet;
+    if (hex6(saved.floor)) PAINT.floor = saved.floor; if (saved.dir === 'v' || saved.dir === 'h') PAINT.dir = saved.dir;   // l'ancien champ « tone » (multiplicateur) est ignoré
+    if (saved.parquet === 0 || saved.parquet === 1) PAINT.parquet = saved.parquet;
   }
   refreshPaint(false);
 })();
