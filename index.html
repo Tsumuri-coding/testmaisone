@@ -87,6 +87,10 @@ tr.tot td{font-weight:600;border-bottom:0;padding-top:8px}
 #furnBar[data-sel="0"] .act{display:none}
 #furnBar #fbDone{width:auto;padding:0 12px;margin-left:4px;background:var(--accent);color:var(--accent-ink);font:600 13px var(--f-disp);letter-spacing:.08em;text-transform:uppercase}
 .fcat{grid-template-columns:repeat(2,1fr)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{width:34px;height:34px;border-radius:50%;padding:0;background:var(--sw);border:1px solid rgba(0,0,0,.3);box-shadow:inset 0 0 0 2px var(--panel);cursor:pointer}
+.chip[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+.proom{margin-bottom:6px}
 .fcat .fcat-h{grid-column:1/-1;margin-top:6px;font:600 11px var(--f-disp);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink)}
 .fcat .btn{text-transform:none;letter-spacing:.02em;font-size:13px;font-weight:500;text-align:left;padding:7px 8px}
 .btn.danger{color:#b3261e;border-color:rgba(179,38,30,.4)}
@@ -137,7 +141,7 @@ tr.tot td{font-weight:600;border-bottom:0;padding-top:8px}
   #panel details{display:none;border:0;padding:0}
   #panel details>summary{display:none}
   #app[data-sheet="views"] #panel details[data-sec="views"],#app[data-sheet="cut"] #panel details[data-sec="cut"],#app[data-sheet="furn"] #panel details[data-sec="furn"],
-  #app[data-sheet="doors"] #panel details[data-sec="doors"],#app[data-sheet="areas"] #panel details[data-sec="areas"]{display:block}
+  #app[data-sheet="doors"] #panel details[data-sec="doors"],#app[data-sheet="areas"] #panel details[data-sec="areas"],#app[data-sheet="areas"] #panel details[data-sec="paint"]{display:block}
   #panel .legal{display:none}
   #app[data-sheet="areas"] #panel .legal{display:block}
   /* cibles tactiles plus grandes */
@@ -236,6 +240,16 @@ tr.tot td{font-weight:600;border-bottom:0;padding-top:8px}
       <div class="grid" style="grid-template-columns:1fr"><button class="btn" data-view="portes" id="seeDoors">Voir les portes (intérieur)</button></div>
       <p class="note">Gamme Righini Kréation, vantail plein, fil horizontal. Teintes M04 et M03A relevées sur tes photos d’échantillons (M02 : visuel fabricant) : rendu indicatif, la balance des blancs d’un téléphone varie. À valider sur échantillon.</p>
     </details>
+    <details data-sec="paint">
+      <summary>Peintures et sol des chambres</summary>
+      <div class="grid" style="grid-template-columns:1fr"><button class="btn" id="seeBeds2" type="button">Voir les chambres</button></div>
+      <div id="paintRooms"></div>
+      <div class="sw-title"><b>Sol des trois chambres</b><span id="toneName"></span></div>
+      <label class="chk"><input type="checkbox" id="parquetToggle" checked>Parquet flottant (sinon chape nue)</label>
+      <div id="toneRow"><div class="chips" id="toneChips"></div></div>
+      <div class="grid" style="grid-template-columns:1fr"><button class="btn sm" id="paintReset" type="button">Choix initiaux</button></div>
+      <p class="note">Teintes d’écran indicatives, à faire reproduire sur nuancier ou échantillon (finition mate ou velours). Une teinte par pièce, toutes les faces des murs. Parquet contrecollé en chêne, lames larges d’environ 19 cm (exemple, à adapter au modèle choisi), pose flottante, lames dans le sens de la longueur des pièces, vers les fenêtres. Le sol du reste de la maison est inchangé.</p>
+    </details>
     <details data-sec="areas">
       <summary>Surfaces (plan)</summary>
       <table id="areas"></table>
@@ -309,7 +323,8 @@ const HOUSE_POS = { x: 13.09, z: 14.80 };    // coin sud-est de la maison dans l
 const FLOORS = {                              // choix provisoires de la page CHOIX, à ajuster
   wood: { name: 'Carrelage effet parquet 20×120', color: '#c9a066', tile: [1.2, 0.2] },
   tile60: { name: 'Carrelage 60×60 (pièces d\'eau et cuisine)', color: '#d7d0c4', tile: [0.6, 0.6] },
-  screed:{ name: 'Chape (sol à la charge du client)', color: '#c3beb4' }
+  screed:{ name: 'Chape (sol à la charge du client)', color: '#c3beb4' },
+  parquet: { name: 'Parquet flottant contrecollé chêne, lames larges (chambres)', color: '#d4b88c' }
 };
 // Enduit : valeur calibrée pour le moteur 3D (éclairage non linéaire) afin que la façade au soleil rende l'échantillon #ea8f59 fourni.
 const PAL = {
@@ -370,6 +385,30 @@ const TEX = {
   wood: mkTex(2048, 1024, (g, w, h) => { g.fillStyle = FLOORS.wood.color; g.fillRect(0, 0, w, h); }),   // lames chargées ci-dessous
   tile60: mkTex(1024, 1024, (g, w, h) => { g.fillStyle = FLOORS.tile60.color; g.fillRect(0, 0, w, h); })   // photo chargée ci-dessous
 };
+/* parquet flottant des chambres : 10 lames de 19 cm (1,90 m) sur 4,40 m, deux joints bout à bout par lame, décalés ; fil du bois le long de la lame (axe v du plan) */
+TEX.parquet = mkTex(1024, 2048, (g, w, h) => {
+  const r = rnd(91), n = 10, pw = w / n, base = [214, 186, 142];
+  g.fillStyle = '#cdb28a'; g.fillRect(0, 0, w, h);
+  const piece = (x, y0, y1, tone) => {
+    if (y1 - y0 <= 0) return;
+    g.fillStyle = `rgb(${Math.round(base[0] * tone)},${Math.round(base[1] * tone)},${Math.round(base[2] * tone)})`; g.fillRect(x, y0, pw, y1 - y0);
+    g.save(); g.beginPath(); g.rect(x, y0, pw, y1 - y0); g.clip();
+    for (let k = 0; k < 26; k++) {
+      const gx = x + r() * pw, amp = 0.8 + r() * 3.2, ph = r() * 6.28, fr = 0.004 + r() * 0.01, dark = r() < 0.7;
+      g.strokeStyle = dark ? `rgba(105,72,40,${0.05 + r() * 0.12})` : `rgba(255,244,222,${0.06 + r() * 0.12})`; g.lineWidth = 0.6 + r() * 1.8;
+      g.beginPath(); for (let y = y0 - 8; y <= y1 + 8; y += 12) { const xx = gx + Math.sin(y * fr + ph) * amp; if (y === y0 - 8) g.moveTo(xx, y); else g.lineTo(xx, y); } g.stroke();
+    }
+    g.restore();
+  };
+  for (let i = 0; i < n; i++) {
+    const x = i * pw, c1 = Math.floor((0.1 + r() * 0.35) * h), c2 = Math.min(Math.floor(h * 0.95), c1 + Math.floor((0.3 + r() * 0.3) * h)), ta = 0.93 + r() * 0.12, tb = 0.93 + r() * 0.12;
+    piece(x, c1, c2, ta); piece(x, c2, h, tb); piece(x, 0, c1, tb);                                   // le morceau « tb » revient par le haut de la tuile
+    g.fillStyle = 'rgba(60,40,22,.55)'; g.fillRect(x, c1 - 1, pw, 2); g.fillRect(x, c2 - 1, pw, 2);      // joints bout à bout
+  }
+  for (let k = 0; k < 7; k++) { g.fillStyle = 'rgba(90,60,32,.30)'; g.beginPath(); g.ellipse(r() * w, r() * h, 5 + r() * 4, 9 + r() * 7, 0, 0, 6.283); g.fill(); }   // quelques nœuds
+  for (let i = 0; i < n; i++) { g.fillStyle = 'rgba(55,38,22,.5)'; g.fillRect(i * pw, 0, 2, h); g.fillStyle = 'rgba(255,245,225,.16)'; g.fillRect(i * pw + 2, 0, 1.5, h); }   // chanfreins
+});
+TEX.parquet.repeat.set(1 / 1.9, 1 / 4.4);
 TEX.render.repeat.set(1, 1); TEX.tiles.repeat.set(1 / 1.2, 1 / 1.2);
 TEX.wood.repeat.set(1 / 2.4, 1 / 1.2);
 TEX.tile60.repeat.set(1 / 1.2, 1 / 1.2); TEX.shutter.repeat.set(1, 1);
@@ -435,7 +474,8 @@ const M = {
   bark: std({ color: '#5b4636' }),
   wood: std({ color: '#ffffff', map: TEX.wood, roughness: 0.4, side: THREE.DoubleSide }),
   tile60: std({ color: '#ffffff', map: TEX.tile60, roughness: 0.4, side: THREE.DoubleSide }),
-  screed: std({ color: FLOORS.screed.color, roughness: 0.9, side: THREE.DoubleSide })
+  screed: std({ color: FLOORS.screed.color, roughness: 0.9, side: THREE.DoubleSide }),
+  parquet: std({ color: '#ffffff', map: TEX.parquet, roughness: 0.55, side: THREE.DoubleSide })
 };
 for (const k of ['grass', 'verge', 'asphalt']) M[k].map.repeat.set(0.35, 0.35);
 M.gravel.map.repeat.set(0.5, 0.5); M.concrete.map.repeat.set(0.5, 0.5);
@@ -520,6 +560,13 @@ M.wall = std({ color: '#ffffff', map: TEX.render, bumpMap: TEX.render, bumpScale
 M.plain = std({ color: '#ffffff', vertexColors: true });                                                         // faces intérieures et tranches : lisses
 M.wall.emissive = new THREE.Color(PAL.render[0].c).multiplyScalar(0.3);   // léger éclairage propre : la façade à l'ombre reste proche de l'échantillon
 const CR = new THREE.Color(PAL.render[0].c), CI = new THREE.Color('#eeece6'), CS = new THREE.Color('#d7cfc2');
+/* Peintures des chambres : une teinte par pièce (les autres faces intérieures restent en CI). La conversion tient compte de l'éclairage « legacy » très lumineux, comme pour le mobilier. */
+const paintCol = hex => { const c = new THREE.Color(hex); c.r = Math.pow(c.r, 1.7) * 0.92; c.g = Math.pow(c.g, 1.7) * 0.92; c.b = Math.pow(c.b, 1.7) * 0.92; return c; };
+const PAINT = { c1: '#cc8866', c2: '#bcc5a8', c3: '#b8c6cc', parquet: 1, tone: '#ffffff' };           // Ch.1 terracotta · Ch.2 vert sauge · Ch.3 bleu brume
+const PAINTC = { c1: paintCol(PAINT.c1), c2: paintCol(PAINT.c2), c3: paintCol(PAINT.c3) };
+const PAINT_ROOMS = [['c2', [0.36, 0.36, 3.06, 4.29]], ['c3', [3.13, 0.36, 5.83, 4.29]], ['c1', [0.36, 5.33, 3.06, 9.01]]];   // intérieur des chambres (u0, v0, u1, v1)
+const PAINT_SPLIT = { u: [3.095], v: [4.325, 5.295] };                                                     // limites de pièces où l'on coupe les murs en morceaux
+const roomPaint = (u, v) => { for (const [k, r] of PAINT_ROOMS) if (u > r[0] && u < r[2] && v > r[1] && v < r[3]) return k; return null; };
 
 /* ===== 6. Murs et ouvertures ===== */
 const CENTER = [6.7, 4.7];
@@ -560,11 +607,23 @@ function buildWall(B, w, cutH) {
   const plusOuter = nOut[0] * (-d[1]) + nOut[1] * d[0] > 0;
   const cols = !w.ext ? [CI, CI, CS, CI, CI, CI] : plusOuter ? [CR, CR, CS, CI, CR, CI] : [CR, CR, CS, CI, CI, CR];
   const top = Math.min(w.top || 2.5, cutH), bottom = -0.35;
+  const axis = Math.abs(d[0]) > 0.7 ? 0 : 1, nPlus = [-d[1], d[0]];
+  const faceCols = sm => {                                          // faces +z / −z : teinte de la chambre qu'elles regardent
+    const c = cols.slice(), px = a[0] + d[0] * sm, pz = a[1] + d[1] * sm, off = th / 2 + 0.1;
+    const rp = roomPaint(px + nPlus[0] * off, pz + nPlus[1] * off), rm = roomPaint(px - nPlus[0] * off, pz - nPlus[1] * off);
+    if (rp && c[4] !== CR) c[4] = PAINTC[rp]; if (rm && c[5] !== CR) c[5] = PAINTC[rm];
+    return c;
+  };
   const piece = (s0, s1, y0, y1) => {
     if (s1 - s0 < 1e-4 || y1 - y0 < 1e-4) return;
-    const g = new THREE.BoxGeometry(s1 - s0, y1 - y0, th); uvScale(g, s1 - s0, y1 - y0, th, 1);
-    const sm = (s0 + s1) / 2; g.applyMatrix4(matY(a[0] + d[0] * sm, (y0 + y1) / 2, a[1] + d[1] * sm, -ang));
-    B.wall.addFaces(g, cols, cols.map(c => c === CR)); B.plain.addFaces(g, cols, cols.map(c => c !== CR)); g.dispose();
+    const cuts = [s0]; for (const v of PAINT_SPLIT[axis ? 'v' : 'u']) { const sc = (v - a[axis]) / d[axis]; if (sc > s0 + 1e-3 && sc < s1 - 1e-3) cuts.push(sc); }
+    cuts.sort((p, q) => p - q); cuts.push(s1);
+    for (let i = 0; i + 1 < cuts.length; i++) {                      // un morceau par chambre traversée
+      const t0 = cuts[i], t1 = cuts[i + 1], sm = (t0 + t1) / 2, fc = faceCols(sm);
+      const g = new THREE.BoxGeometry(t1 - t0, y1 - y0, th); uvScale(g, t1 - t0, y1 - y0, th, 1);
+      g.applyMatrix4(matY(a[0] + d[0] * sm, (y0 + y1) / 2, a[1] + d[1] * sm, -ang));
+      B.wall.addFaces(g, fc, fc.map(c => c === CR)); B.plain.addFaces(g, fc, fc.map(c => c !== CR)); g.dispose();
+    }
   };
   let cur = 0;
   for (const o of (w.open || []).slice().sort((p, q) => p.s[0] - q.s[0])) {
@@ -624,12 +683,16 @@ function rebuildWalls(cutH) {
   invalidate(true);
 }
 
+const bedFloors = [];
+function setBedFloor(on) { PAINT.parquet = on ? 1 : 0; for (const m of bedFloors) m.material = on ? M.parquet : M.screed; invalidate(true); }
 function buildFloors() {
   const inner = [[T, T], [uwi(T), T], [uwi(3.40), 3.40], [9.83, 3.40], [9.83, 9.01], [T, 9.01]];
   floorsG.add(polyFloor(inner, M.wood, 0.000));
   floorsG.add(polyFloor([[T, 4.36], [2.13, 4.36], [2.13, 5.26], [T, 5.26]], M.tile60, 0.003));   // WC
-  for (const r of [[T, T, 3.06, 4.29], [3.13, T, 5.83, 4.29], [T, 5.33, 3.06, 9.01]])
-    floorsG.add(polyFloor([[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]], M.screed, 0.003));
+  bedFloors.length = 0;
+  for (const r of [[T, T, 3.06, 4.29], [3.13, T, 5.83, 4.29], [T, 5.33, 3.06, 9.01]]) {                // chambres : parquet flottant (ou chape nue)
+    const m = polyFloor([[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]], PAINT.parquet ? M.parquet : M.screed, 0.003); bedFloors.push(m); floorsG.add(m);
+  }
   floorsG.add(polyFloor([[3.13, 5.33], [4.21, 5.33], [4.21, 6.30], [4.80, 6.30], [4.80, 9.01], [3.13, 9.01]], M.tile60, 0.003));
   floorsG.add(polyFloor([[5.90, 5.26], [8.05, 5.26], [8.05, 9.01], [4.87, 9.01], [4.87, 6.30], [5.90, 6.30]], M.tile60, 0.003));
   const gar = [[10.04, 3.61], [uwi(3.61), 3.61], [uwi(9.01), 9.01], [10.04, 9.01]];
@@ -1599,12 +1662,12 @@ $('#seeLiving').addEventListener('click', () => {     // toiture masquée + coup
   const f = $('#furnToggle'); if (!f.checked) { f.checked = true; f.dispatchEvent(new Event('change')); }
   goView('sejour');
 });
-$('#seeBeds').addEventListener('click', () => {       // toiture masquée + coupe à 2,3 m, caméra au-dessus des chambres
+document.querySelectorAll('#seeBeds, #seeBeds2').forEach(b => b.addEventListener('click', () => {       // toiture masquée + coupe à 2,3 m, caméra au-dessus des chambres
   const r = $('#roofToggle'); r.checked = false; r.dispatchEvent(new Event('change'));
   const c = $('#cut'); c.value = 2.3; c.dispatchEvent(new Event('input'));
   const f = $('#furnToggle'); if (!f.checked) { f.checked = true; f.dispatchEvent(new Event('change')); }
   goView(camera.aspect < 0.9 ? 'chambresP' : 'chambres');
-});
+}));
 controls.addEventListener('start', () => { tween = null; userMoved = true; });
 
 /* ===== 11. Coupe, toiture, volets, limites ===== */
@@ -1669,14 +1732,18 @@ panelBtn.addEventListener('click', () => { panelAuto = false; panel.hidden = !pa
 resize();
 
 /* ===== 15b. Téléphone : barre d'onglets en bas + feuille de réglages (le soleil n'est qu'un onglet parmi les autres) ===== */
-const appEl = $('#app'), SHEETS = { views: 'Point de vue', cut: 'Coupe et intérieur', furn: 'Mobilier', doors: 'Portes intérieures (7)', areas: 'Surfaces', sun: 'Soleil et heure' };
+const appEl = $('#app'), SHEETS = { views: 'Point de vue', cut: 'Coupe et intérieur', furn: 'Mobilier', doors: 'Portes intérieures (7)', areas: 'Surfaces et peintures', sun: 'Soleil et heure' };
 const isPhone = () => matchMedia('(max-width:760px)').matches;
 function setSheet(name) {
   if (name === appEl.dataset.sheet) name = '';
   appEl.dataset.sheet = name;
   document.querySelectorAll('#dock button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sheet === name)));
   document.querySelectorAll('.shTitle').forEach(t => t.textContent = SHEETS[name] || '');
-  if (name && name !== 'sun') { const d = panel.querySelector(`details[data-sec="${name}"]`); if (d) d.open = true; panel.scrollTop = 0; }
+  if (name && name !== 'sun') {
+    /* l'onglet « Surfaces » regroupe deux sections : peintures et sol des chambres + surfaces du plan */
+    (name === 'areas' ? ['paint', 'areas'] : [name]).forEach(k => { const d = panel.querySelector(`details[data-sec="${k}"]`); if (d) d.open = true; });
+    panel.scrollTop = 0;
+  }
   requestAnimationFrame(resize);
 }
 appEl.dataset.sheet = '';
@@ -1684,7 +1751,7 @@ document.querySelectorAll('#dock button').forEach(b => b.addEventListener('click
 document.querySelectorAll('.shClose').forEach(b => b.addEventListener('click', () => setSheet('')));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && appEl.dataset.sheet) setSheet(''); });
 // choisir un point de vue ferme la feuille pour voir le résultat
-document.querySelectorAll('#views .btn, #seeDoors, #seeLiving, #seeBeds').forEach(b => b.addEventListener('click', () => { if (isPhone() && appEl.dataset.sheet) setSheet(''); }));
+document.querySelectorAll('#views .btn, #seeDoors, #seeLiving, #seeBeds, #seeBeds2').forEach(b => b.addEventListener('click', () => { if (isPhone() && appEl.dataset.sheet) setSheet(''); }));
 
 // Si la page a été chargée dans un conteneur de taille nulle, la vue initiale et le panneau sont réglés à la première vraie taille.
 function onFirstSize() {
@@ -1728,6 +1795,57 @@ function frame(ts) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+/* ===== 11b. Peintures des chambres et sol : choix par pièce, mémorisés sur cet appareil ===== */
+const PALETTE = [['Blanc chaud', '#ece8df'], ['Lin', '#dccfb8'], ['Vert sauge', '#bcc5a8'], ['Bleu brume', '#b8c6cc'], ['Terracotta', '#cc8866'], ['Olive doux', '#a5a97f']];
+const TONES = [['Chêne clair', '#ffffff', '#d9c19a'], ['Chêne miel', '#e6c28c', '#c9a26a'], ['Chêne grisé', '#d2cabd', '#b9ad9a']];   // nom, teinte multipliée à la texture, pastille
+const PROOMS = [['c2', 'Chambre 2 · lit 160'], ['c3', 'Chambre 3 · lit 140'], ['c1', 'Chambre 1 · canapé convertible et bureau']];
+const PKEY = 'maison3d.paint.v1', PDEF = Object.assign({}, PAINT);
+const paintName = hex => { const q = PALETTE.find(x => x[1].toLowerCase() === String(hex).toLowerCase()); return q ? q[0] : 'Teinte personnalisée'; };
+const hex6 = c => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
+let paintRb = 0;
+function refreshPaint(save) {
+  cancelAnimationFrame(paintRb);
+  paintRb = requestAnimationFrame(() => { for (const k of ['c1', 'c2', 'c3']) PAINTC[k].copy(paintCol(PAINT[k])); rebuildWalls(cutH); });
+  M.parquet.color.set(PAINT.tone); setBedFloor(!!PAINT.parquet);
+  syncPaintUI();
+  if (save) { try { localStorage.setItem(PKEY, JSON.stringify({ v: 1, c1: PAINT.c1, c2: PAINT.c2, c3: PAINT.c3, parquet: PAINT.parquet, tone: PAINT.tone })); } catch (e) { /* stockage indisponible */ } }
+}
+function syncPaintUI() {
+  for (const [k] of PROOMS) {
+    $('#pn-' + k).textContent = paintName(PAINT[k]); $('#pk-' + k).value = PAINT[k];
+    document.querySelectorAll('#pc-' + k + ' .chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.hex.toLowerCase() === PAINT[k].toLowerCase())));
+  }
+  $('#parquetToggle').checked = !!PAINT.parquet; $('#toneRow').hidden = !PAINT.parquet;
+  document.querySelectorAll('#toneChips .chip').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.hex.toLowerCase() === PAINT.tone.toLowerCase())));
+  const t = TONES.find(x => x[1].toLowerCase() === PAINT.tone.toLowerCase()); $('#toneName').textContent = t ? t[0] : '';
+}
+(function initPaintUI() {
+  const host = $('#paintRooms');
+  for (const [k, label] of PROOMS) {
+    const d = document.createElement('div'); d.className = 'proom';
+    d.innerHTML = `<div class="sw-title"><b>${label}</b><span id="pn-${k}"></span></div><div class="chips" id="pc-${k}"></div><div class="row"><label for="pk-${k}">Autre teinte</label><input type="color" id="pk-${k}"></div>`;
+    host.appendChild(d);
+    const chips = d.querySelector('.chips');
+    for (const [name, hex] of PALETTE) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.hex = hex; b.style.setProperty('--sw', hex); b.title = name; b.setAttribute('aria-label', name);
+      b.addEventListener('click', () => { PAINT[k] = hex; refreshPaint(true); }); chips.appendChild(b);
+    }
+    d.querySelector('input[type=color]').addEventListener('input', e => { PAINT[k] = e.target.value; refreshPaint(true); });
+  }
+  const tc = $('#toneChips');
+  for (const [name, mult, dot] of TONES) {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.hex = mult; b.style.setProperty('--sw', dot); b.title = name; b.setAttribute('aria-label', name);
+    b.addEventListener('click', () => { PAINT.tone = mult; refreshPaint(true); }); tc.appendChild(b);
+  }
+  $('#parquetToggle').addEventListener('change', e => { PAINT.parquet = e.target.checked ? 1 : 0; refreshPaint(true); });
+  $('#paintReset').addEventListener('click', () => { Object.assign(PAINT, PDEF); try { localStorage.removeItem(PKEY); } catch (e) { /* ignore */ } refreshPaint(false); });
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(PKEY) || 'null'); } catch (e) { saved = null; }
+  if (saved && saved.v === 1) {
+    for (const k of ['c1', 'c2', 'c3']) if (hex6(saved[k])) PAINT[k] = saved[k];
+    if (hex6(saved.tone)) PAINT.tone = saved.tone; if (saved.parquet === 0 || saved.parquet === 1) PAINT.parquet = saved.parquet;
+  }
+  refreshPaint(false);
+})();
 /* ===== 16. Mobilier : chargement, sélection, déplacement, réglages, sauvegarde locale, export / import ===== */
 const FE = { edit: false, sel: null, drag: null, tap: null, dirty: false };
 const FKEY = 'maison3d.furn.v1';
